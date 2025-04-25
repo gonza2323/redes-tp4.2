@@ -37,7 +37,7 @@ def read_messages():
         msg = ":".join(parsedData[1:])
         
         with patch_stdout():
-            print(f"El usuario {user} ({so.getsockname()}) dice: {msg}")
+            print(f"El usuario {user} ({so.getsockname()[0]}) dice: {msg}")
 
 
 def main():

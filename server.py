@@ -9,7 +9,6 @@ PORT = 60000
 BUFFER_SIZE = 1024
 PROMPT = "> "
 
-
 client_socket = None
 
 connection_event = threading.Event()
@@ -38,10 +37,11 @@ def read_messages():
             
             with patch_stdout():
                 if msg.lower() == "exit":
+                    print(f"El usuario {user} ({client_socket.getsockname()[0]}) terminó la conexión")
                     client_socket.close()
                     connection_event.clear()
                 else:
-                    print(f"El usuario {user} ({client_socket.getsockname()}) dice: {msg}")
+                    print(f"El usuario {user} ({client_socket.getsockname()[0]}) dice: {msg}")
         else:
             time.sleep(0.1)
 
@@ -53,7 +53,7 @@ def await_connections():
     print("Esperando conexión del cliente...")
     global client_socket
     client_socket, _ = server_socket.accept()
-    print(f"{client_socket.getsockname()} se conectó al servidor")
+    print(f"{client_socket.getsockname()[0]} se conectó al servidor")
     connection_event.set()
 
 
@@ -77,6 +77,7 @@ def main():
                 else:
                     data = username + ":" + message
                     try:
+                        print(f"Tú ({username}) ({client_socket.getsockname()[0]}) dices: {message}")
                         client_socket.send(data.encode())
                     except Exception as e:
                         print("Se perdió la conexión")
