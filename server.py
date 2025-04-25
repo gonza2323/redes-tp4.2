@@ -11,12 +11,9 @@ PROMPT = "> "
 
 
 client_socket = None
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.bind(('0.0.0.0', PORT))
 
-stop_event = threading.Event()
 connection_event = threading.Event()
-
+stop_event = threading.Event()
 
 def get_username():
     username = None
@@ -32,64 +29,70 @@ def get_username():
 
 
 def read_messages():
-    while True:
-        data = client_socket.recv(BUFFER_SIZE)
-        parsedData = data.decode().split(":")
-        user = parsedData[0]
-        msg = ":".join(parsedData[1:])
-        
-        with patch_stdout():
-            if msg.lower() == "exit":
-                client_socket.close()
-                connection_event.clear()
-            else:
-                print(f"El usuario {user} ({client_socket.getsockname()}) dice: {msg}")
+    while not stop_event.is_set():
+        if connection_event.is_set():
+            data = client_socket.recv(BUFFER_SIZE)
+            parsedData = data.decode().split(":")
+            user = parsedData[0]
+            msg = ":".join(parsedData[1:])
+            
+            with patch_stdout():
+                if msg.lower() == "exit":
+                    client_socket.close()
+                    connection_event.clear()
+                else:
+                    print(f"El usuario {user} ({client_socket.getsockname()}) dice: {msg}")
+        else:
+            time.sleep(0.1)
 
 
 def await_connections():
-    global client_socket
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind(('0.0.0.0', PORT))
     server_socket.listen(1)
+    print("Esperando conexión del cliente...")
+    global client_socket
     client_socket, _ = server_socket.accept()
+    print(f"{client_socket.getsockname()} se conectó al servidor")
     connection_event.set()
-    return
 
 
 def main():
     session = PromptSession()
     username = get_username()
 
+    server_thread = threading.Thread(target=await_connections, daemon=True)
+    server_thread.start()
+
+    reading_thread = threading.Thread(target=read_messages, daemon=True)
+    reading_thread.start()
+
     while True:
-        print("Esperando conexión del cliente...")
-        global client_socket
-        
-        server_thread = threading.Thread(target=await_connections, daemon=True)
-        server_thread.start()
-
-        while not connection_event.is_set():
-            usr_input = input(PROMPT)
-            if usr_input.lower() == "exit":
-                print("Saliendo...")
-                time.sleep(0.5)
-                return
-
-        print(f"{client_socket.getsockname()} se conectó al servidor")
-
-        reading_thread = threading.Thread(target=read_messages, daemon=True)
-        reading_thread.start()
-
-        while True:
-            with patch_stdout():
-                message = session.prompt(PROMPT)
-                
+        with patch_stdout():
+            message = session.prompt(PROMPT)
+            
+            if connection_event.is_set():
                 if message.lower() == "exit":
                     print("No se puede salir mientras esté conectado un cliente")
                 else:
                     data = username + ":" + message
                     try:
-                        server_socket.send(data.encode())
+                        client_socket.send(data.encode())
                     except Exception as e:
                         print("Se perdió la conexión")
-                        break
+                        connection_event.clear()
+                        server_thread.start()
+            else:
+                if message.lower() == "exit":
+                    stop_event.set()
+                    print("Saliendo...")
+                    time.sleep(0.5)
+                    break
+                else:
+                    print("No está conectado un cliente, espere o utilice 'exit' para salir")
+                    
+
+
 
 
 if __name__ == "__main__":

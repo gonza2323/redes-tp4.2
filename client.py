@@ -67,7 +67,6 @@ def main():
 
             if message.lower() == "exit":
                 stop_event.set()
-                so.close()
                 print("Saliendo...")
                 time.sleep(0.5)
                 break
