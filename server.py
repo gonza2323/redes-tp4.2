@@ -1,5 +1,6 @@
 from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
+from common import *
 import threading
 import socket
 import time
@@ -10,27 +11,33 @@ BUFFER_SIZE = 1024
 PROMPT = "> "
 
 client_socket = None
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server_socket.bind(('0.0.0.0', PORT))
+server_socket.listen(1)
 
 connection_event = threading.Event()
 stop_event = threading.Event()
 
-def get_username():
-    username = None
-    while True:
-        username = input("Ingrese su nombre de usuario: ")
-        if not username:
-            print("El nombre de usuario no puede estar vacío")
-        elif ":" in username:
-            print("El nombre de usuario no puede contener dos puntos ':'")
-        else:
-            break
-    return username
+
+def stop_app():
+    stop_event.set()
+    server_socket.close()
+    client_socket.close()
+    print("Saliendo...")
+    time.sleep(0.5)
 
 
 def read_messages():
     while not stop_event.is_set():
         if connection_event.is_set():
             data = client_socket.recv(BUFFER_SIZE)
+
+            if data == b'':
+                if not stop_event.is_set():
+                    stop_app()
+                return
+
             parsedData = data.decode().split(":")
             user = parsedData[0]
             msg = ":".join(parsedData[1:])
@@ -47,12 +54,10 @@ def read_messages():
 
 
 def await_connections():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(('0.0.0.0', PORT))
-    server_socket.listen(1)
     print("Esperando conexión del cliente...")
     global client_socket
     client_socket, _ = server_socket.accept()
+    client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     print(f"{client_socket.getsockname()[0]} se conectó al servidor")
     connection_event.set()
 
@@ -85,16 +90,19 @@ def main():
                         server_thread.start()
             else:
                 if message.lower() == "exit":
-                    stop_event.set()
-                    print("Saliendo...")
-                    time.sleep(0.5)
+                    stop_app()
                     break
                 else:
                     print("No está conectado un cliente, espere o utilice 'exit' para salir")
-                    
-
-
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt as e:
+        stop_app()
+    except Exception as e:
+        print(e)
+    finally:
+        server_socket.close()
+        client_socket.close()
